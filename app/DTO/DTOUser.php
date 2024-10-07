@@ -2,7 +2,8 @@
 
 namespace App\DTO;
 
-class DTOUser {
+class DTOUser
+{
 
 	public function __construct(
 		public string $spaceId,

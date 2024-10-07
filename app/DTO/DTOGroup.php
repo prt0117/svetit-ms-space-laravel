@@ -2,7 +2,9 @@
 
 namespace App\DTO;
 
-class DTOGroup {
+class DTOGroup
+{
+
 	public function __construct(
 		public ?int $id,
 		public string $name,

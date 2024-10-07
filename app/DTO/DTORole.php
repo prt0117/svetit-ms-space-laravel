@@ -2,7 +2,8 @@
 
 namespace app\DTO;
 
-class DTORole {
+class DTORole
+{
 
 	public function __construct(
 		public int $id,

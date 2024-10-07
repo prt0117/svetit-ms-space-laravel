@@ -2,7 +2,8 @@
 
 namespace App\DTO;
 
-class DTOServiceInfo {
+class DTOServiceInfo
+{
 
 	public function __construct(
 		public bool $canCreate,

@@ -2,7 +2,8 @@
 
 namespace App\DTO;
 
-class DTOLink {
+class DTOLink
+{
 
 	public function __construct(
 		public ?string $id,

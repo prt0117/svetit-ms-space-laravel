@@ -2,7 +2,8 @@
 
 namespace App\DTO;
 
-class DTOInvitation {
+class DTOInvitation
+{
 
 	public function __construct(
 		public ?int $id,

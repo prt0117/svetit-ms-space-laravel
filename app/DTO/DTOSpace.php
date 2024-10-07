@@ -2,7 +2,8 @@
 
 namespace App\DTO;
 
-class DTOSpace {
+class DTOSpace
+{
 
 	public function __construct(
 		public ?string $id,
