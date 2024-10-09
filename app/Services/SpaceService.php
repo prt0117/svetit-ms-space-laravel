@@ -1,30 +1,30 @@
 <?php
 
 namespace App\Services;
+// todo - need to use Model Classes
 use App\DTO\DTOPagingResult;
+// todo - need to do something with DTOPagingResult
+use App\DTO\DTOSpace;
+use App\DTO\DTOUser;
 use App\Repositories\CommonRepository;
 use App\Repositories\InvitationRepository;
 use App\Repositories\SpaceRepository;
 use App\Repositories\UserRepository;
 use App\Repositories\LinkRepository;
-use App\Repositories\InvitationRepository;
 use Illuminate\Support\Facades\Config;
 
 class SpaceService {
-
-	std::vector<model::SpaceUser> _users;
-
-	int _itemsLimitForList;
-	int _tokenExpireSecs;
-
+	public int $itemsLimitForList;
 	public string $defaultSpace;
-	private bool $canCreate;
-	private int $spacesLimitForUser;
+
 	public CommonRepository $commonRepository;
 	public SpaceRepository $spaceRepository;
 	public UserRepository $userRepository;
 	public LinkRepository $linkRepository;
 	public InvitationRepository $invitationRepository;
+
+	private bool $canCreate;
+	private int $spacesLimitForUser;
 
 	public function __construct(
 		CommonRepository $commonRepository,
@@ -42,6 +42,7 @@ class SpaceService {
 		$this->invitationRepository = $invitationRepository;
 	}
 
+	// todo - везде, где DTOPagingResult - возвращать не DTO, что-то другое
 	public function GetList(string $userId, int $start, int $limit): DTOPagingResult
 	{
 		if (empty($this->defaultSpace)) {
@@ -51,7 +52,7 @@ class SpaceService {
 			}
 		}
 
-		return $this->$commonRepository()->SelectByUserId($userId, $start, $limit);
+		return $this->commonRepository->SelectByUserId($userId, $start, $limit);
 	}
 
 	public function GetAvailableList(string $userId, int $start, int $limit): DTOPagingResult
@@ -122,8 +123,8 @@ class SpaceService {
 		int $limit
 	): DTOPagingResult
 	{
-		bool $isUserInside = $this->userRepository->IsUserInside($spaceId, $userId);
-		if (!$userInside)
+		$isUserInside = $this->userRepository->IsUserInside($spaceId, $userId);
+		if (!$isUserInside)
 			abort(404);
 
 		return $this->userRepository->Get($spaceId, $start, $limit);
@@ -141,7 +142,7 @@ class SpaceService {
 
 	public function CountInvitationAvailable(string $currentUserId): int
 	{
-		$this->commonRepository->GetAvailableInvitationsCount($currentUserId);
+		return $this->commonRepository->GetAvailableInvitationsCount($currentUserId);
 	}
 
 	public function KeyCreateCheck(string $key, string $userId): bool
@@ -170,7 +171,7 @@ class SpaceService {
 
 	public function IsLimitReached(string $userId)
 	{
-		int $spacesWithUser = $this->commonRepository->GetCountSpacesWithUser($userId);
+		$spacesWithUser = $this->commonRepository->GetCountSpacesWithUser($userId);
 		return $this->spacesLimitForUser <= $spacesWithUser;
 	}
 
@@ -179,8 +180,9 @@ class SpaceService {
 		string $key,
 		bool $requestsAllowed,
 		string $userId
-	): void
+	)
 	{
+		// todo - transaction needed;
 		$spaceId = $this->spaceRepository->Create($name, $key, $requestsAllowed);
 		$this->userRepository->Create(
 			$spaceId,
@@ -190,7 +192,7 @@ class SpaceService {
 		);
 	}
 
-	public function Delete(string $id): void
+	public function Delete(string $id)
 	{
 		$this->userRepository->DeleteBySpace($id);
 		$this->invitationRepository->DeleteBySpace($id);
@@ -198,7 +200,7 @@ class SpaceService {
 		$this->spaceRepository->Delete($id);
 	}
 
-	public function IsSpaceOwner(string $id, string $userid)
+	public function IsSpaceOwner(string $id, string $userId): bool
 	{
 		return $this->userRepository->IsOwner($id, $userId);
 	}
@@ -208,274 +210,176 @@ class SpaceService {
 		string $spaceId,
 		string $userId,
 		?int $roleId
-	): void
+	)
 	{
 		$this->commonRepository->CreateInvitation($spaceId, $userId, $roleId, $creatorId);
 	}
 
 	public function ChangeRoleInInvitation(int $id, int $roleId, string $userId)
 	{
-		$invitation = $this->spaceInvitation
+		$invitation = $this->invitationRepository->SelectById($id);
+		if (!$this->userRepository->IsAdmin($invitation->spaceId, $userId))
+			abort(403);
+
+		$this->invitationRepository->UpdateRole($id, $roleId);
 	}
 
+	public function ApproveInvitation(int $id, string $headerUserId)
+	{
+		$invitation = $this->invitationRepository->SelectById($id);
+		$validRoles = [1, 2, 3];
+		if (!empty($invitation->roleId)) {
+			if (!in_array($invitation->roleId, $validRoles))
+				abort(400, "Wrong role");
+		} else
+			abort(400, "Wrong role");
 
-void Service::ChangeRoleInInvitation(int id, int roleId, const std::string& userId) {
-	const auto invitation = _repo.SpaceInvitation().SelectById(id);
-	if (!_repo.SpaceUser().IsAdmin(invitation.spaceId, userId))
-		throw errors::Forbidden403();
+		if ($invitation->creatorId == $invitation->userId) {
+			if ($invitation->userId == $headerUserId)
+				abort(403);
+			if (!$this->userRepository->IsAdmin($invitation->spaceId, $headerUserId))
+				abort(403);
+		} elseif ($invitation->userId != $headerUserId)
+			abort(403);
 
-	_repo.SpaceInvitation().UpdateRole(id, roleId);
-}
+		$this->invitationRepository->DeleteById($id);
 
-void Service::ApproveInvitation(int id, const std::string& headerUserId) {
-	model::SpaceInvitation invitation = _repo.SpaceInvitation().SelectById(id);
-
-	// тут надо переписать на получение списка всех ролей для Пространства из таблицы space.role, также, видимо, надо в метод добавить параметр spaceId
-	static const std::set<int> valid_roles{
-		1, 2, 3
-	};
-	if (invitation.roleId.has_value()){
-		if (!valid_roles.contains(invitation.roleId.value()))
-			throw errors::BadRequest400("Wrong role");
-	}
-	else
-		throw errors::BadRequest400("Wrong role");
-
-	// Я прошусь/хочет к нам - creatorId == userId
-	if (invitation.creatorId == invitation.userId) {
-		if (invitation.userId == headerUserId)
-			throw errors::Forbidden403();
-		// Я прошусь/хочет к нам - может одобрить только админ
-		if (!_repo.SpaceUser().IsAdmin(invitation.spaceId, headerUserId))
-			throw errors::Forbidden403();
-	}
-	// Меня/мы пригласили - может одобрить только пользователь которого пригласили
-	else if (invitation.userId != headerUserId)
-		throw errors::Forbidden403();
-
-	_repo.SpaceInvitation().DeleteById(id);
-
-	_repo.SpaceUser().Create(invitation.spaceId, invitation.userId, false, invitation.roleId);
-}
-
-void Service::DeleteInvitation(int id, const std::string& headerUserId) {
-	const auto invitation = _repo.SpaceInvitation().SelectById(id);
-
-	bool isEnoughRights = false;
-
-	if (invitation.creatorId == invitation.userId && invitation.userId == headerUserId) {
-		// I want to join
-		isEnoughRights = true;
-	} else if (_repo.SpaceUser().IsAdmin(invitation.spaceId, headerUserId)) {
-		// other cases need admin rights
-		isEnoughRights = true;
+		$this->userRepository->Create(
+			$invitation->spaceId,
+			$invitation->userId,
+			false,
+			$invitation->roleId
+		);
 	}
 
-	if (!isEnoughRights)
-		throw errors::Forbidden403();
+	public function DeleteInvitation(int $id, string $headerUserId)
+	{
+		$invitation = $this->invitationRepository->SelectById($id);
+		$isEnoughRights = false;
 
-	_repo.SpaceInvitation().DeleteById(id);
-}
+		if ($invitation->creatorId == $invitation->userId
+			&& $invitation->userId == $headerUserId
+		) {
+			$isEnoughRights = true;
+		} elseif ($this->userRepository->IsAdmin($invitation->spaceId, $headerUserId)) {
+			$isEnoughRights = true;
+		}
 
-bool Service::CheckExpiredAtValidity(const std::chrono::system_clock::time_point& expiredAt) {
-	// todo - is it right way to compare timestamps in this current situation?
-	return expiredAt > std::chrono::system_clock::now();
-}
+		if (!$isEnoughRights)
+			abort(403);
 
-void Service::CreateInvitationLink(const boost::uuids::uuid& spaceId, const std::string& creatorId, const std::string& name, const std::chrono::system_clock::time_point& expiredAt) {
-	if (!_repo.SpaceUser().IsAdmin(spaceId, creatorId))
-		throw errors::Forbidden403();
+		$this->invitationRepository->DeleteById($id);
+	}
 
-	_repo.SpaceLink().Insert(
-		spaceId,
-		creatorId,
-		name,
-		expiredAt
-	);
-}
+	public function CheckExpiredAtValidity(int $expiredAt): bool
+	{
+		return $expiredAt > now()->timestamp;
+	}
 
-void Service::DeleteInvitationLink(const boost::uuids::uuid& id, const std::string& userId) {
-	const auto link = _repo.SpaceLink().SelectById(id);
+	public function CreateInvitationLink(string $spaceId, string $creatorId, string $name, int $expiredAt)
+	{
+		if (!$this->userRepository->IsAdmin($spaceId, $creatorId))
+			abort(403);
 
-	if (!_repo.SpaceUser().IsAdmin(link.spaceId, userId))
-		throw errors::Forbidden403();
+		$this->linkRepository->Insert($spaceId, $creatorId, $name, $expiredAt);
+	}
 
-	_repo.SpaceLink().DeleteById(id);
-}
+	public function DeleteInvitationLink(string $id, string $userId)
+	{
+		$link = $this->linkRepository->SelectById($id);
 
-model::Space Service::GetById(const boost::uuids::uuid& id, const std::string& userId) {
-	const auto space = _repo.Space().SelectById(id);
-	if (space.requestsAllowed)
-		return space;
+		if (!$this->userRepository->IsAdmin($link->spaceId, $userId))
+			abort(403);
 
-	if (_repo.SpaceInvitation().IsUserInvited(space.id, userId))
-		return space;
+		$this->linkRepository->DeleteById($id);
+	}
 
-	if (!_repo.SpaceUser().IsUserInside(space.id, userId))
-		throw errors::NotFound404{};
-	return space;
-}
+	public function GetById(string $id, string $userId): Space
+	{
+		$space = $this->spaceRepository->SelectById($id);
+		if ($space->requestsAllowed)
+			return $space;
 
-model::Space Service::GetByKey(const std::string& key, const std::string& userId) {
-	const auto space = _repo.Space().SelectByKey(key);
-	if (space.requestsAllowed)
-		return space;
+		if ($this->invitationRepository->IsUserInvited($space->id, $userId))
+			return $space;
 
-	if (!_repo.SpaceUser().IsUserInside(space.id, userId))
-		throw errors::NotFound404{};
-	return space;
-}
+		if ($this->userRepository->IsUserInside($space->id, $userId))
+			abort(404);
 
-model::Space Service::GetByLink(const boost::uuids::uuid& link) {
-	return _repo.SelectByLink(link);
-}
+		return $space;
+	}
 
+	public function GetByKey(string $key, string $userId): Space
+	{
+		$space = $this->spaceRepository->SelectByKey($key);
+		if ($space->requestsAllowed)
+			return $space;
 
-bool Service::InviteByLink(const std::string& creatorId, const boost::uuids::uuid& linkId) {
-	const auto link = _repo.SpaceLink().SelectById(linkId);
+		if (!$this->userRepository->IsUserInside($space->id, $userId))
+			abort(404);
 
-	const auto now = std::chrono::system_clock::now();
-	if (link.expiredAt <= now)
-		return false;
-	_repo.CreateInvitation(link.spaceId, creatorId, std::nullopt, creatorId);
-	return true;
-}
+		return $space;
+	}
 
-void Service::DeleteUser(const boost::uuids::uuid& spaceId, const std::string& userId, const std::string& headerUserId) {
-	_repo.SpaceUser().Delete(spaceId, userId, headerUserId);
-}
+	public function GetByLink(string $link): Space
+	{
+		return $this->commonRepository->SelectByLink($link);
+	}
 
-bool Service::UpdateUser(const model::SpaceUser& updUser, const std::string& headerUserId) {
-	// Нет смысла менять что-то у самого себя:
-	if (updUser.userId == headerUserId)
-		return false;
-
-	const auto caller = _repo.SpaceUser().GetByIds(updUser.spaceId, headerUserId);
-
-	// Только админ может что-то менять
-	if (caller.roleId != consts::kRoleAdmin)
-		return false;
-
-	// Только владелец может сменить владельца
-	if (updUser.isOwner && !caller.isOwner)
-		return false;
-
-	auto user = _repo.SpaceUser().GetByIds(updUser.spaceId, updUser.userId);
-
-	// У владельца ничего менять нельзя
-	if (user.isOwner)
-		return false;
-
-	if (updUser.isOwner) {
-		auto trx = _repo.WithTrx();
-		trx.SpaceUser().SetIsOwner(updUser.spaceId, caller.userId, /*isOwner*/ false);
-		trx.SpaceUser().SetIsOwner(updUser.spaceId, updUser.userId, /*isOwner*/ true);
-		trx.Commit();
+	public function InviteByLink(string $creatorId, string $linkId): bool
+	{
+		$link = $this->linkRepository->SelectById($linkId);
+		$now = now()->timestamp;
+		if ($link->expiredAt <= $now)
+			return false;
+		$this->commonRepository->CreateInvitation(
+			$link->spaceId,
+			$creatorId,
+			null,
+			$creatorId
+		);
 		return true;
 	}
 
-	user.roleId = updUser.roleId;
-	_repo.SpaceUser().Update(user);
-	return true;
-}
+	public function DeleteUser(string $spaceId, string $userId, string $headerUserId)
+	{
+		$this->userRepository->Delete($spaceId, $userId, $headerUserId);
+	}
 
-const std::string& Service::GetJSONSchemasPath() {
-	return _jsonSchemasPath;
-}
+	public function UpdateUser(DTOUser $updUser, string $headerUserId): bool
+	{
+		if ($updUser->userId == $headerUserId)
+			return false;
 
-bool Service::isKeyReserved(const std::string& key) {
-	static const std::set<std::string> reserved{
-		"u", "auth", "settings", "main", "api"
-	};
-	return reserved.contains(key);
-}
+		$caller = $this->userRepository->GetByIds($updUser->spaceId, $headerUserId);
 
-tokens::Tokens& Service::Tokens() {
-	return _tokens;
-}
+		if ($caller->roleId != Config::get("constants.roles.admin"))
+			return false;
 
-std::pair<model::Space, int> Service::GetSpaceAndRoleId(const std::string& key, const std::string userId) {
-	model::Space space = _repo.Space().SelectByKey(key);
-	model::SpaceUser user = _repo.SpaceUser().GetByIds(space.id, userId);
-	std::pair<model::Space, int> res(space, user.roleId);
-	return res;
-}
+		if ($updUser->isOwner && !$caller->isOwner)
+			return false;
 
-std::string Service::GetKeyFromHeader(const std::string& header) {
-	static std::regex rgx("^/([^/]+)/");
-	std::smatch match;
+		$user = $this->userRepository->GetByIds($updUser->spaceId, $updUser->userId);
 
-	if (!std::regex_search(header.begin(), header.end(), match, rgx))
-		throw errors::BadRequest400("Space key is missing");
+		if ($user->isOwner)
+			return false;
 
-	return match[1];
-}
+		if ($updUser->isOwner) {
+			// todo - transaction needed
+			$this->userRepository->SetIsOwner($updUser->spaceId, $caller->userId, false);
+			$this->userRepository->SetIsOwner($updUser->spaceId, $updUser->userId, true);
+			return true;
+		}
 
-std::string Service::GenerateCookieName(const std::string& key) {
-	uint32_t crc32 = generateCRC32(key);
-	std::string cookieName = "space_" + std::to_string(crc32);
-	return cookieName;
-}
+		$user->roleId = $updUser->roleId;
+		$this->userRepository->Update($user);
+		return true;
+	}
 
-std::string Service::CreateToken(const std::string& id, const std::string& key, const std::string& userId, const std::string& roleId) {
-	std::string token = Tokens().Create(key, id, roleId, userId, _tokenExpireSecs);
-	return token;
-}
-
-model::Group Service::GetGroup(int id, const std::string& userId, const boost::uuids::uuid& spaceId) {
-	return _repo.Group().Select(id, spaceId);
-}
-
-void Service::DeleteGroup(int id, const std::string& userId, const boost::uuids::uuid& spaceId) {
-	_repo.Group().Delete(id, spaceId);
-}
-
-void Service::CreateGroup(const model::Group& item, const std::string& userId, const boost::uuids::uuid& spaceId) {
-	_repo.Group().Create(item, spaceId);
-}
-
-void Service::UpdateGroup(const model::Group& item, const std::string& userId, const boost::uuids::uuid& spaceId) {
-	_repo.Group().Update(item, spaceId);
-}
-
-PagingResult<model::Group> Service::GetGroupList(const std::string& userId, uint32_t start, uint32_t limit, const boost::uuids::uuid& spaceId) {
-	return _repo.Group().SelectList(start, limit, spaceId);
-}
-
-model::Role Service::GetRole(int id, const std::string& userId, const boost::uuids::uuid& spaceId) {
-	return _repo.Role().Select(id, spaceId);
-}
-
-void Service::DeleteRole(int id, const std::string& userId, const boost::uuids::uuid& spaceId, bool isAdmin) {
-	if (!isAdmin)
-		throw errors::Forbidden403();
-	_repo.Role().Delete(id, spaceId);
-}
-
-void Service::CreateRole(const std::string& roleName, const std::string& userId, const boost::uuids::uuid& spaceId, bool isAdmin) {
-	if (!isAdmin)
-		throw errors::Forbidden403();
-	_repo.Role().Create(roleName, spaceId);
-}
-
-void Service::UpdateRole(const model::Role& item, const std::string& userId, const boost::uuids::uuid& spaceId, bool isAdmin) {
-	if (!isAdmin)
-		throw errors::Forbidden403();
-	_repo.Role().Update(item, spaceId);
-}
-
-PagingResult<model::Role> Service::GetRoleList(const std::string& userId, uint32_t start, uint32_t limit, const boost::uuids::uuid& spaceId) {
-	return _repo.Role().SelectList(start, limit, spaceId);
-}
-
-uint32_t Service::generateCRC32(const std::string& data) {
-	boost::crc_32_type result;
-	result.process_bytes(data.data(), data.length());
-	return result.checksum();
-}
-
-void Service::createSystemRoles() {
-	_repo.Role().CreateSystemRoles();
-}
+	public function IsKeyReserved(string $key): bool
+	{
+		$reserved = ["u", "auth", "settings", "main", "api"];
+		return in_array($key, $reserved);
+	}
 
 }
