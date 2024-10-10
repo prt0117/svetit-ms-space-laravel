@@ -34,7 +34,7 @@ class SpaceService {
 		InvitationRepository $invitationRepository
 	)
 	{
-		// todo - need to initialize all members of class
+		// todo - need to initialize all other members of class, especially default configuration values like itemsLimitForList
 		$this->commonRepository = $commonRepository;
 		$this->spaceRepository = $spaceRepository;
 		$this->userRepository = $userRepository;
