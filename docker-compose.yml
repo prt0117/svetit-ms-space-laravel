@@ -1,0 +1,49 @@
+services:
+  postgres:
+    container_name: postgres_container
+    image: postgres:16
+    environment:
+      POSTGRES_DB: "space"
+      POSTGRES_USER: "root"
+      POSTGRES_PASSWORD: "root"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - pgdb-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 4G
+    networks:
+      - postgres
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "habrpguser@habr.com"
+      PGADMIN_DEFAULT_PASSWORD: "pgadminpwd4habr"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    networks:
+      - postgres
+
+volumes:
+  pgdb-data:
+  pgadmin-data:
+
+networks:
+  postgres:
+    driver: bridge
